@@ -37,7 +37,7 @@ Normalized to [0,1] by dividing by the max possible sum (all adjacent expertise 
 
 ## ranking formula
 ```
-weighted_avg(restaurant) = Σ(score_i * w_i) / Σ(w_i)
+weighted_avg(restaurant) = Σ(score_i * weight_i) / Σ(weight_i)
 ```
 Falls back to simple average if all credibility weights are 0.
 
