@@ -12,7 +12,14 @@ w(u, c) = clamp(α·alignment + β·expertise + γ·proximity, 0, 1)
 Weights: α=0.50, β=0.30, γ=0.20
 
 ### alignment_score
-Pearson correlation between user's ratings and trusted source ratings on overlapping restaurants in cuisine C. Strongest signal. Falls back to 0 if no overlap with trusted sources.
+Pearson correlation between user's ratings and the average trusted-source rating per restaurant, on overlapping restaurants in cuisine C. Requires at least 3 overlapping restaurants; returns 0 otherwise.
+
+When overlap is insufficient, α's weight is redistributed proportionally across expertise and proximity so the score stays in [0, 1]:
+```
+w = (β·expertise + γ·proximity) / (β + γ)   # when alignment unavailable
+```
+
+Multiple trusted sources on the same restaurant are averaged before correlating — no single trusted source dominates the signal.
 
 ### expertise_score
 Log-normalized count of user's ratings in cuisine C:
@@ -20,13 +27,13 @@ Log-normalized count of user's ratings in cuisine C:
 log(n+1) / log(max_n+1)    # max_n = 20 (soft cap)
 ```
 
-### proximity_transfer
+### proximity_score
 Expertise borrowed from adjacent cuisines via the cuisine graph:
 ```
 Σ expertise(user, cuisine_j) * (1 - distance(C, cuisine_j))
-  for all j ≠ C within distance threshold (0.6)
+  for all j ≠ C where distance(C, cuisine_j) < 0.6
 ```
-Normalized to [0,1] by dividing by the max possible sum.
+Normalized to [0,1] by dividing by the max possible sum (all adjacent expertise = 1). Distance threshold is strict (`< 0.6`, not `≤`).
 
 ## ranking formula
 ```
