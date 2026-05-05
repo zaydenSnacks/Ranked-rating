@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from .alignment import alignment_score
 from .expertise import expertise_score
 
-ALPHA = 0.50
-BETA = 0.30
-GAMMA = 0.20
+W_ALIGNMENT = 0.50  # α
+W_EXPERTISE  = 0.30  # β
+W_PROXIMITY  = 0.20  # γ
 
 
 def credibility_score(
@@ -14,12 +14,22 @@ def credibility_score(
     cuisine_id: int,
     proximity: float = 0.0,
 ) -> float:
+    """Weighted credibility of a user for a given cuisine, clamped to [0, 1].
+
+    Implements: clamp(α·alignment + β·expertise + γ·proximity, 0, 1)
+
+    When alignment has insufficient trusted-source overlap, α's weight is
+    redistributed proportionally across expertise and proximity so the score
+    stays in [0, 1] rather than being artificially capped at 0.5.
+    """
     align, sufficient_overlap = alignment_score(session, user_id, cuisine_id)
     exp = expertise_score(session, user_id, cuisine_id)
 
     if not sufficient_overlap:
-        w = (BETA * exp + GAMMA * proximity) / (BETA + GAMMA)
+        # Divide by the sum of remaining weights (not 1.0) so the result is
+        # still a weighted average in [0, 1] rather than a raw partial sum.
+        w = (W_EXPERTISE * exp + W_PROXIMITY * proximity) / (W_EXPERTISE + W_PROXIMITY)
     else:
-        w = ALPHA * align + BETA * exp + GAMMA * proximity
+        w = W_ALIGNMENT * align + W_EXPERTISE * exp + W_PROXIMITY * proximity
 
     return max(0.0, min(1.0, w))

@@ -15,6 +15,16 @@ class AlignmentResult(NamedTuple):
 
 
 def alignment_score(session: Session, user_id: int, cuisine_id: int) -> AlignmentResult:
+    """Pearson correlation between the user's ratings and avg trusted-source ratings.
+
+    Requires at least MIN_OVERLAP restaurants rated by both the user and at least
+    one trusted source. Returns (0.0, sufficient_overlap=False) when that threshold
+    isn't met — callers should redistribute weight rather than treating 0 as a
+    real correlation score.
+    """
+    # Average all trusted-source ratings per restaurant before correlating.
+    # This collapses multiple trusted sources on the same restaurant to one value
+    # so no single trusted source dominates the signal.
     trusted_avg_sub = (
         select(
             RatingEvent.restaurant_id,
@@ -27,6 +37,7 @@ def alignment_score(session: Session, user_id: int, cuisine_id: int) -> Alignmen
         .subquery()
     )
 
+    # Restrict to restaurants the user also rated in this cuisine.
     rows = session.execute(
         select(RatingEvent.score, trusted_avg_sub.c.trusted_avg)
         .join(trusted_avg_sub, RatingEvent.restaurant_id == trusted_avg_sub.c.restaurant_id)
@@ -41,7 +52,10 @@ def alignment_score(session: Session, user_id: int, cuisine_id: int) -> Alignmen
     user_scores = [r.score for r in rows]
     trusted_scores = [r.trusted_avg for r in rows]
 
+    # corrcoef returns a 2x2 correlation matrix; [0, 1] is the off-diagonal
+    # element, which is the correlation between the two input arrays.
     corr = float(np.corrcoef(user_scores, trusted_scores)[0, 1])
+    # Zero variance in either array (all identical scores) produces NaN.
     if np.isnan(corr):
         corr = 0.0
 

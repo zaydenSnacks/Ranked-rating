@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 
 from ..data.models import RatingEvent, Restaurant
 
-MAX_N = 20
+MAX_N = 20  # soft cap; 20+ ratings in a cuisine maps to full score
 
 
 def expertise_score(session: Session, user_id: int, cuisine_id: int) -> float:
+    """Log-normalized count of the user's ratings in a cuisine, capped at MAX_N."""
     n = session.scalar(
         select(func.count())
         .select_from(RatingEvent)
