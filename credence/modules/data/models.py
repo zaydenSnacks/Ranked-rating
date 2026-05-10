@@ -56,3 +56,25 @@ class RatingEvent(Base):
     restaurant_id: Mapped[int]   = mapped_column(Integer, ForeignKey("restaurants.id"), nullable=False)
     score:         Mapped[float] = mapped_column(Float,   nullable=False)
     created_at:    Mapped[str]   = mapped_column(String,  nullable=False)
+
+
+class UserCredibility(Base):
+    __tablename__ = "user_credibility"
+
+    user_id:           Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"),    primary_key=True)
+    cuisine_id:        Mapped[int]   = mapped_column(Integer, ForeignKey("cuisines.id"), primary_key=True)
+    credibility_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    rating_deviation:  Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    volatility:        Mapped[float] = mapped_column(Float, nullable=False, default=0.06)
+    last_updated:      Mapped[str]   = mapped_column(String, nullable=False)
+
+
+class CredibilityHistory(Base):
+    __tablename__ = "credibility_history"
+
+    id:                Mapped[int]   = mapped_column(Integer, primary_key=True)
+    user_id:           Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"),    nullable=False)
+    cuisine_id:        Mapped[int]   = mapped_column(Integer, ForeignKey("cuisines.id"), nullable=False)
+    credibility_score: Mapped[float] = mapped_column(Float, nullable=False)
+    rating_deviation:  Mapped[float] = mapped_column(Float, nullable=False)
+    recorded_at:       Mapped[str]   = mapped_column(String, nullable=False)

@@ -40,3 +40,24 @@ CREATE TABLE rating_events (
     score         REAL    NOT NULL,
     created_at    TEXT    NOT NULL
 );
+
+-- phase 2: per-(user, cuisine) Glicko-inspired state
+CREATE TABLE user_credibility (
+    user_id           INTEGER NOT NULL REFERENCES users(id),
+    cuisine_id        INTEGER NOT NULL REFERENCES cuisines(id),
+    credibility_score REAL    NOT NULL DEFAULT 0.5,
+    rating_deviation  REAL    NOT NULL DEFAULT 1.0,   -- falls with activity
+    volatility        REAL    NOT NULL DEFAULT 0.06,  -- rises if user is inconsistent
+    last_updated      TEXT    NOT NULL,
+    PRIMARY KEY (user_id, cuisine_id)
+);
+
+-- phase 2: append-only log of credibility state changes
+CREATE TABLE credibility_history (
+    id                INTEGER PRIMARY KEY,
+    user_id           INTEGER NOT NULL REFERENCES users(id),
+    cuisine_id        INTEGER NOT NULL REFERENCES cuisines(id),
+    credibility_score REAL    NOT NULL,
+    rating_deviation  REAL    NOT NULL,
+    recorded_at       TEXT    NOT NULL
+);
