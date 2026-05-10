@@ -1,5 +1,10 @@
 # credence — spec
 
+> **Visual model:** every formula and infra stage in this spec has a plot in
+> `viz/`. When you change the math (constants, formula shapes, new components)
+> or add a new infra stage (workers, streams, indexes), you must update viz/
+> in the same PR. See `viz/README.md` for the maintenance contract.
+
 ## what it is
 A weighted restaurant rating system. A user's rating is weighted by their credibility for that cuisine type. Not all raters are equal — someone who consistently agrees with trusted food critics on Italian food carries more weight when rating Italian restaurants.
 
