@@ -48,6 +48,18 @@ def _effective_weight(
     return credibility_score * (1 - rating_deviation) * expertise_boost
 
 
+def user_effective_weight(session: Session, user_id: int, cuisine_id: int) -> float | None:
+    """Effective weight for a (user, cuisine) pair read from stored credibility state.
+
+    Returns None when no user_credibility record exists — callers should fall back
+    to the phase-1 credibility_score() formula.
+    """
+    rec = session.get(UserCredibility, (user_id, cuisine_id))
+    if rec is None:
+        return None
+    return _effective_weight(session, user_id, cuisine_id, rec.credibility_score, rec.rating_deviation)
+
+
 def _community_consensus(
     session: Session,
     restaurant_id: int,
