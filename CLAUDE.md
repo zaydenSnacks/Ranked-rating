@@ -13,6 +13,15 @@ ranked-rating/
     ├── seed.sql         — 5 users, 5 cuisines, 7 restaurants, 15 rating events
     ├── main.py          — CLI entry point (Typer: init-db, seed, rate, score)
     ├── requirements.txt — runtime deps (matplotlib is dev-only, not listed)
+    ├── pytest.ini       — test config (testpaths=tests, pythonpath=.)
+    ├── tests/
+    │   ├── conftest.py      — in-memory SQLite fixture + shared helpers
+    │   ├── test_expertise.py
+    │   ├── test_proximity.py
+    │   ├── test_alignment.py
+    │   ├── test_score.py
+    │   ├── test_dynamic.py
+    │   └── test_ranking.py
     ├── modules/
     │   ├── data/
     │   │   ├── db.py        — SQLAlchemy engine + session factory (DATABASE_URL env var)
@@ -115,6 +124,13 @@ python main.py rate 3 5 4.0
 python main.py score 5
 ```
 
+### tests
+
+```bash
+pytest          # run all 38 tests (in-memory SQLite, no credence.db needed)
+pytest -v       # verbose output per test
+```
+
 ### visualization
 
 ```bash
@@ -137,7 +153,6 @@ Agreement threshold: `|user_score − consensus| < 4.5` (i.e., `agreement >= 0.5
 
 ## known gaps (as of phase 2)
 
-- No tests — the credibility math has no unit or integration test coverage
 - `matplotlib` is a dev dependency but not in `requirements.txt`
 - `credibility_history` does not store `volatility` — can't fully reconstruct Glicko state from history alone
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
