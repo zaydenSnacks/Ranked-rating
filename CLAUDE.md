@@ -11,7 +11,7 @@ ranked-rating/
     ├── DECISIONS.md     — tech decision log (read before proposing alternatives)
     ├── schema.sql       — canonical DB schema (SQLite now, Postgres in phase 2)
     ├── seed.sql         — 5 users, 5 cuisines, 7 restaurants, 15 rating events
-    ├── main.py          — CLI entry point (stub — not yet wired)
+    ├── main.py          — CLI entry point (Typer: init-db, seed, rate, score)
     ├── requirements.txt — runtime deps (matplotlib is dev-only, not listed)
     ├── modules/
     │   ├── data/
@@ -25,7 +25,8 @@ ranked-rating/
     │   │   ├── dynamic.py   — Glicko-inspired credibility updates (phase 2)
     │   │   └── seeds.py     — seed trusted sources with low rating_deviation (phase 2)
     │   ├── ranking/
-    │   │   └── ranking.py   — credibility-weighted restaurant score
+    │   │   └── ranking.py   — credibility-weighted restaurant score (phase 2: Bayesian prior)
+    │   ├── actions.py       — submit_rating(): insert event + fire credibility update atomically
     │   ├── api/             — empty (phase 3)
     │   └── cuisine_graph/   — empty (future)
     └── viz/
@@ -39,10 +40,10 @@ ranked-rating/
 
 ## current phase
 
-**Phase 1 complete.** **Phase 2 in progress.**
+**Phase 2 complete.**
 
-- Phase 1: fixed formula, SQLite, seed data, ranking engine — all implemented
-- Phase 2: `dynamic.py` and `seeds.py` implemented; Postgres migration and CLI not yet done
+- Phase 1: fixed formula, SQLite, seed data, ranking engine — done
+- Phase 2: Glicko dynamic credibility, Bayesian ranking prior, CLI — done (Postgres migration deferred to phase 3)
 - Phase 3+: designed in SPEC.md, not started
 
 ## credibility formula (locked — do not change weights without updating SPEC.md)
@@ -88,17 +89,37 @@ effective_weight = credibility_score × (1 − rating_deviation) × (1 + 0.20·p
 ```bash
 cd credence
 pip install -r requirements.txt
-# set DATABASE_URL or defaults to credence.db (SQLite)
-
-# initialize DB
-sqlite3 credence.db < schema.sql
-sqlite3 credence.db < seed.sql
-
-# generate visualization plots
-python -m viz.generate
+# DATABASE_URL defaults to credence.db (SQLite); set it to a postgres:// URL for Postgres
 ```
 
-CLI (Typer) is not yet wired — `main.py` is empty.
+### first-time setup
+
+```bash
+# create tables
+python main.py init-db
+
+# load seed data (users, cuisines, restaurants, ratings)
+sqlite3 credence.db < seed.sql
+
+# seed trusted sources with low rating_deviation
+python main.py seed
+```
+
+### CLI commands
+
+```bash
+# submit a rating (user_id, restaurant_id, score 1–10)
+python main.py rate 3 5 4.0
+
+# print weighted score + per-rater credibility breakdown for a restaurant
+python main.py score 5
+```
+
+### visualization
+
+```bash
+python -m viz.generate   # writes 9 PNGs to viz/output/
+```
 
 ## phase 2 constants (dynamic.py)
 
@@ -117,7 +138,6 @@ Agreement threshold: `|user_score − consensus| < 4.5` (i.e., `agreement >= 0.5
 ## known gaps (as of phase 2)
 
 - No tests — the credibility math has no unit or integration test coverage
-- `main.py` is empty — no runnable CLI yet
 - `matplotlib` is a dev dependency but not in `requirements.txt`
 - `credibility_history` does not store `volatility` — can't fully reconstruct Glicko state from history alone
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
