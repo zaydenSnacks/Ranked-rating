@@ -2,4 +2,4 @@ __pycache__/
 *.pyc
 *.db
 .env
-.claude
+.claude.DS_Store
