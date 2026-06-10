@@ -22,13 +22,14 @@ ranked-rating/
     │   ├── test_score.py
     │   ├── test_dynamic.py
     │   ├── test_ranking.py
+    │   ├── test_yelp_importer.py
     │   └── test_clustering.py    — phase 2 clustering tests (planned)
     ├── modules/
     │   ├── data/
     │   │   ├── db.py        — SQLAlchemy engine + session factory (DATABASE_URL env var)
     │   │   ├── models.py    — ORM models for all 11 tables
     │   │   └── importers/
-    │   │       └── yelp.py  — Yelp Academic Dataset → credence schema (planned)
+    │   │       └── yelp.py  — Yelp Academic Dataset → credence schema (one-shot, streaming)
     │   ├── credibility/
     │   │   ├── score.py     — main formula entry point
     │   │   ├── alignment.py — Pearson correlation vs cluster consensus (phase 2: was trusted sources)
@@ -163,12 +164,16 @@ python main.py seed
 
 ### data bootstrapping (phase 2)
 
-Clusters need volume to converge. With only seed data (15 ratings) k-means produces noise. Use the Yelp Academic Dataset:
+Clusters need volume to converge. With only seed data (15 ratings) k-means produces noise. Use the Yelp Academic Dataset (one-shot — refuses to re-run; see DECISIONS.md):
 
 ```bash
-# planned: import millions of real ratings
 python main.py import-yelp --path /path/to/yelp_academic_dataset
+
+# iterate on a slice first
+python main.py import-yelp --path ... --city Philadelphia --max-reviews 50000
 ```
+
+Maps Yelp categories onto the 5 seed cuisines (skips multi-cuisine matches), converts stars 1–5 → scores 1–10, drops users with < 3 qualifying reviews, and inserts raw `rating_events` only — credibility and clusters are recomputed afterwards.
 
 ### CLI commands
 
@@ -229,6 +234,5 @@ Agreement threshold: `|user_score − consensus| < 4.5` (i.e., `agreement >= 0.5
 - `credibility_history` does not store `volatility` — can't fully reconstruct Glicko state from history alone
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
-- Yelp dataset importer planned but not written — blocking real cluster convergence testing
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
 - No story yet for handling restaurants that span two cuisines (e.g., Korean-Mexican fusion) — open question in SPEC.md

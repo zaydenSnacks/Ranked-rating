@@ -31,6 +31,42 @@ def seed():
 
 
 @app.command()
+def import_yelp(
+    path:             str = typer.Option(..., "--path", help="directory containing the Yelp Academic Dataset JSON files"),
+    city:             str = typer.Option(None, help="only import businesses in this city"),
+    max_reviews:      int = typer.Option(None, help="cap on qualifying reviews considered (for iteration)"),
+    min_user_reviews: int = typer.Option(3, help="drop users with fewer qualifying reviews than this"),
+):
+    """Import the Yelp Academic Dataset (one-shot; see DECISIONS.md)."""
+    from pathlib import Path
+    from modules.data.importers.yelp import BUSINESS_FILE, REVIEW_FILE, import_yelp as run_import
+
+    base = Path(path)
+    business_path, review_path = base / BUSINESS_FILE, base / REVIEW_FILE
+    for p in (business_path, review_path):
+        if not p.exists():
+            console.print(f"[red]{p} not found[/red]"); raise typer.Exit(1)
+
+    with _session() as s:
+        try:
+            stats = run_import(
+                s, business_path, review_path,
+                city=city, max_reviews=max_reviews, min_user_reviews=min_user_reviews,
+            )
+        except (RuntimeError, ValueError) as e:
+            console.print(f"[red]{e}[/red]"); raise typer.Exit(1)
+        s.commit()
+
+    console.print(
+        f"[green]✓[/green] imported {stats['restaurants']} restaurants, "
+        f"{stats['users']} users, {stats['events']} rating events"
+    )
+    skipped = {k: v for k, v in stats.items() if k.startswith("skipped_") and v}
+    if skipped:
+        console.print("  skipped: " + ", ".join(f"{k[8:]}={v}" for k, v in skipped.items()))
+
+
+@app.command()
 def rate(
     user_id:       int   = typer.Argument(..., help="user ID"),
     restaurant_id: int   = typer.Argument(..., help="restaurant ID"),

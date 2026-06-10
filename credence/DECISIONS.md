@@ -52,3 +52,17 @@ Three tables, mirroring the SPEC design:
 - **`cluster_restaurant_scores`** — natural PK `(cluster_id, restaurant_id)`, upserted by `consensus.py`. Index on `restaurant_id` because the ranking read path asks "give me every cluster's score for restaurant R" and then picks the highest-coherence one.
 
 Timestamps stay ISO text like every other table (one consistent convention; the lot converts to TIMESTAMPTZ together in the phase 3 Postgres migration). Re-clustering replaces cluster rows rather than versioning them — `rating_events` is the replayable record; cluster state is derived and disposable.
+
+---
+
+## yelp importer scope
+
+**Category mapping: existing 5 cuisines only.** `CATEGORY_MAP` in `yelp.py` maps Yelp categories (Chinese/Cantonese/Dim Sum, Italian/Pizza, Japanese/Ramen/Sushi Bars, Korean, American (Traditional)/(New)/Diners) onto the seed cuisines. The importer never creates cuisines, because each new cuisine would need hand-authored `cuisine_distances` rows. Compromise: plain Korean restaurants map to "Korean Fusion" — taxonomically loose, but it gives that cuisine volume; revisit when the cuisine graph is learned (phase 3+). Businesses matching categories for **more than one** cuisine are skipped — multi-cuisine restaurants are an open SPEC question; better to exclude than to mislabel training data for clustering.
+
+**Stars → score: affine map [1,5] → [1,10].** `score = 1 + (stars − 1) × 2.25`, so 1★→1.0 and 5★→10.0 (both endpoints reachable). The naive `stars × 2` can never produce a score below 2.
+
+**Raw events only — no credibility updates during import.** The importer inserts `rating_events` directly instead of going through `submit_rating()`. Running millions of events through the Glicko path would be slow and would interleave with import order; credibility and clusters are derived state, recomputed from the event log afterwards (this is what append-only buys us).
+
+**One-shot import.** `rating_events` has no natural key for Yelp reviews, so a re-run would silently duplicate events. Rather than half-hearted idempotency, the importer refuses to run if Yelp users (detected by the `@import.yelp` email domain) already exist. Real external-ID tracking can come with the phase 3 Postgres migration if needed.
+
+**Sparse users dropped at import.** Users with fewer than `min_user_reviews` (default 3 = `MIN_RATINGS_FOR_VECTOR`) qualifying reviews are not imported — they could never get a rating vector, so they'd only bloat the users table. Two streaming passes over the review file (count, then insert) keep memory at one small dict; the NDJSON files are too large to load whole.
