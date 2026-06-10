@@ -61,3 +61,39 @@ CREATE TABLE credibility_history (
     rating_deviation  REAL    NOT NULL,
     recorded_at       TEXT    NOT NULL
 );
+
+-- phase 2b: taste groups discovered per cuisine (k-means now, matrix factorization in phase 3)
+CREATE TABLE clusters (
+    id              INTEGER PRIMARY KEY,
+    cuisine_id      INTEGER NOT NULL REFERENCES cuisines(id),
+    label           TEXT,                            -- diagnostic only; the system never uses it
+    coherence_score REAL    NOT NULL DEFAULT 0.0,    -- avg pairwise correlation between members
+    member_count    INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT    NOT NULL
+);
+
+CREATE INDEX ix_clusters_cuisine_id ON clusters(cuisine_id);
+
+-- phase 2b: a user belongs to at most one cluster per cuisine
+CREATE TABLE user_cluster_assignments (
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    cuisine_id  INTEGER NOT NULL REFERENCES cuisines(id),
+    cluster_id  INTEGER NOT NULL REFERENCES clusters(id),
+    confidence  REAL    NOT NULL,  -- [0, 1], distance-based assignment confidence
+    assigned_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, cuisine_id)
+);
+
+CREATE INDEX ix_user_cluster_assignments_cluster_id ON user_cluster_assignments(cluster_id);
+
+-- phase 2b: per-cluster consensus score for each restaurant
+CREATE TABLE cluster_restaurant_scores (
+    cluster_id    INTEGER NOT NULL REFERENCES clusters(id),
+    restaurant_id INTEGER NOT NULL REFERENCES restaurants(id),
+    consensus     REAL    NOT NULL,
+    rater_count   INTEGER NOT NULL,
+    last_updated  TEXT    NOT NULL,
+    PRIMARY KEY (cluster_id, restaurant_id)
+);
+
+CREATE INDEX ix_cluster_restaurant_scores_restaurant_id ON cluster_restaurant_scores(restaurant_id);

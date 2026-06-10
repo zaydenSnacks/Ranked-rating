@@ -78,3 +78,34 @@ class CredibilityHistory(Base):
     credibility_score: Mapped[float] = mapped_column(Float, nullable=False)
     rating_deviation:  Mapped[float] = mapped_column(Float, nullable=False)
     recorded_at:       Mapped[str]   = mapped_column(String, nullable=False)
+
+
+class Cluster(Base):
+    __tablename__ = "clusters"
+
+    id:              Mapped[int]        = mapped_column(Integer, primary_key=True)
+    cuisine_id:      Mapped[int]        = mapped_column(Integer, ForeignKey("cuisines.id"), nullable=False, index=True)
+    label:           Mapped[str | None] = mapped_column(String)
+    coherence_score: Mapped[float]      = mapped_column(Float,   nullable=False, default=0.0)
+    member_count:    Mapped[int]        = mapped_column(Integer, nullable=False, default=0)
+    created_at:      Mapped[str]        = mapped_column(String,  nullable=False)
+
+
+class UserClusterAssignment(Base):
+    __tablename__ = "user_cluster_assignments"
+
+    user_id:     Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"),    primary_key=True)
+    cuisine_id:  Mapped[int]   = mapped_column(Integer, ForeignKey("cuisines.id"), primary_key=True)
+    cluster_id:  Mapped[int]   = mapped_column(Integer, ForeignKey("clusters.id"), nullable=False, index=True)
+    confidence:  Mapped[float] = mapped_column(Float,   nullable=False)
+    assigned_at: Mapped[str]   = mapped_column(String,  nullable=False)
+
+
+class ClusterRestaurantScore(Base):
+    __tablename__ = "cluster_restaurant_scores"
+
+    cluster_id:    Mapped[int]   = mapped_column(Integer, ForeignKey("clusters.id"),    primary_key=True)
+    restaurant_id: Mapped[int]   = mapped_column(Integer, ForeignKey("restaurants.id"), primary_key=True, index=True)
+    consensus:     Mapped[float] = mapped_column(Float,   nullable=False)
+    rater_count:   Mapped[int]   = mapped_column(Integer, nullable=False)
+    last_updated:  Mapped[str]   = mapped_column(String,  nullable=False)
