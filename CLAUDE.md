@@ -10,7 +10,7 @@ ranked-rating/
     ├── SPEC.md          — full product spec (4 phases, cluster-relative credibility)
     ├── DECISIONS.md     — tech decision log (read before proposing alternatives)
     ├── schema.sql       — canonical DB schema (SQLite now, Postgres in phase 3)
-    ├── seed.sql         — 5 users, 5 cuisines, 7 restaurants, 15 rating events
+    ├── seed.sql         — 5 users, 5 cuisines, 7 restaurants, 15 rating events (scores on the 1–10 scale)
     ├── main.py          — CLI entry point (Typer: init-db, seed, rate, score)
     ├── requirements.txt — runtime deps (matplotlib is dev-only, not listed)
     ├── pytest.ini       — test config (testpaths=tests, pythonpath=.)
@@ -174,6 +174,8 @@ python main.py import-yelp --path ... --city Philadelphia --max-reviews 50000
 ```
 
 Maps Yelp categories onto the 5 seed cuisines (skips multi-cuisine matches), converts stars 1–5 → scores 1–10, drops users with < 3 qualifying reviews, and inserts raw `rating_events` only — credibility and clusters are recomputed afterwards.
+
+The dataset covers 11 metros: Philadelphia, Tampa, Tucson, Indianapolis, Nashville, New Orleans, Reno, Edmonton, St. Louis, Santa Barbara, Boise. **New York is not in the dataset** (the seed restaurants are NYC, but seed and Yelp raters share no restaurants anyway). Philadelphia is the largest slice — use it for the first import.
 
 ### CLI commands
 

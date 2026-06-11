@@ -10,9 +10,9 @@ Simple weighted averages — even credibility-weighted ones — eventually drift
 The fix is **cluster-relative credibility**. Instead of one consensus per restaurant, the system discovers multiple taste groups (clusters) from rating patterns alone — no labels, no demographic questions — and computes a separate consensus per cluster. The score surfaced for a restaurant comes from the most internally coherent cluster with sufficient cuisine expertise, not from the global weighted average.
 
 ```
-Without clustering:                With clustering:
-  Taco Bell  → 4.2                   Taco Bell  → 2.8 (calibrated cluster)
-  Ichiran    → 4.2                   Ichiran    → 4.9 (calibrated cluster)
+Without clustering:                With clustering (credence 1–10 scale):
+  Taco Bell  → 4.2 (Google, 1–5)     Taco Bell  → 5.1 (calibrated cluster)
+  Ichiran    → 4.2 (Google, 1–5)     Ichiran    → 9.8 (calibrated cluster)
 ```
 
 This insight reshapes phase 2 onward. The phase 1 formula stays intact as a fallback for sparse data.
@@ -199,24 +199,24 @@ The "calibrated cluster" is never declared. It emerges as the cluster whose memb
 
 ### the Taco Bell problem (worked example)
 
-Without clustering, a restaurant's score is dominated by whoever rates most. Taco Bell at 4.2 reflects casual-rater volume.
+Without clustering, a restaurant's score is dominated by whoever rates most. Taco Bell at 4.2 (on Google's 5-star scale) reflects casual-rater volume.
 
-With clustering:
+With clustering (scores below on credence's 1–10 scale):
 ```
 Taco Bell ratings (hypothetical at scale):
-  Cluster A (casual):      4.3 from 8000 raters, coherence 0.42
-  Cluster B (calibrated):  2.8 from  400 raters, coherence 0.78
+  Cluster A (casual):      8.4 from 8000 raters, coherence 0.42
+  Cluster B (calibrated):  5.1 from  400 raters, coherence 0.78
 
 Ichiran ratings (hypothetical at scale):
-  Cluster A (casual):      3.9 from 2000 raters, coherence 0.42
-  Cluster B (calibrated):  4.9 from  600 raters, coherence 0.78
+  Cluster A (casual):      7.5 from 2000 raters, coherence 0.42
+  Cluster B (calibrated):  9.8 from  600 raters, coherence 0.78
 ```
 
-Cluster B wins both surfacing decisions because its coherence is higher. Taco Bell scores 2.8, Ichiran scores 4.9. The volume advantage of casual raters is neutralized entirely. No user was labeled. No demographic question was asked.
+Cluster B wins both surfacing decisions because its coherence is higher. Taco Bell scores 5.1, Ichiran scores 9.8. The volume advantage of casual raters is neutralized entirely. No user was labeled. No demographic question was asked.
 
 ### data bootstrapping (new in phase 2)
 
-Clusters need volume to converge. The Yelp Academic Dataset provides millions of real reviews with real restaurant metadata, free for research use. A one-time import script maps Yelp JSON to the credence schema.
+Clusters need volume to converge. The Yelp Academic Dataset provides millions of real reviews with real restaurant metadata, free for research use. A one-time import script maps Yelp JSON to the credence schema. The dataset covers 11 metros (Philadelphia, Tampa, Tucson, Indianapolis, Nashville, New Orleans, Reno, Edmonton, St. Louis, Santa Barbara, Boise) — New York is not among them, so the seed NYC restaurants and the imported corpus never overlap; Philadelphia is the largest slice and the default target for the first import.
 
 ```
 modules/
@@ -444,7 +444,7 @@ Key screens:
 /restaurant/:id
   → restaurant detail
   → weighted score prominently (from surfaced cluster)
-  → optional: show cluster breakdown — "casual cluster: 4.3, calibrated: 2.8"
+  → optional: show cluster breakdown — "casual cluster: 8.4, calibrated: 5.1"
     (transparency about why score differs from naive average)
   → per-rater breakdown: score, credibility weight for this cuisine
   → submit rating form (authenticated)
