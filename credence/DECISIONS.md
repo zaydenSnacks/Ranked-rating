@@ -87,5 +87,13 @@ Timestamps stay ISO text like every other table (one consistent convention; the 
 
 ---
 
+## cluster-relative alignment (phase 2 step 4)
+
+`cluster_alignment_score()` correlates the user's latest ratings against their own cluster's stored consensus instead of the trusted-source average. The phase-1 `alignment_score()` is untouched and serves as the fallback, triggered when the user has no cluster assignment or fewer than `MIN_OVERLAP` restaurants overlap with usable consensus rows. `credibility_score()` now calls the cluster version; the fallback chain bottoms out in the existing weight-redistribution path.
+
+**Self-correlation guard: `MIN_CONSENSUS_RATERS = 2`.** A user's own rating is baked into their cluster's consensus, so against a 1-rater consensus row they would mostly be correlating with themselves — those rows are excluded from the comparison set. Residual self-influence remains in multi-rater rows (the user is one of N raters, further dampened by the Bayesian prior); proper leave-one-out consensus is deferred until there's evidence it matters at real data volume.
+
+---
+
 ## seed.sql rescaled to the 1–10 scale
 The seed ratings were authored on a 5-star scale (3.5–5.0) while the system math assumes 1–10 (`SCORE_RANGE = 9.0`, CLI help, Bayesian prior). Left alone, the trusted-source seeds would read as harsh outliers ("8.875 means excellent" vs "4.5 means below average") once Yelp data lands at full range — and they anchor the calibrated cluster, so their absolute level matters. Converted with the **same affine map the importer uses** (`1 + (stars − 1) × 2.25`) so seed and Yelp data share one conversion story. Pearson alignment is affine-invariant, but the absolute deltas in `dynamic.py` (agreement threshold) and consensus distances are not — one map everywhere avoids a systematic offset between cohorts.

@@ -4,9 +4,13 @@ import numpy as np
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..data.models import RatingEvent, Restaurant, TrustedSource
+from ..data.models import (
+    ClusterRestaurantScore, RatingEvent, Restaurant, TrustedSource,
+    UserClusterAssignment,
+)
 
 MIN_OVERLAP = 3
+MIN_CONSENSUS_RATERS = 2  # a 1-rater consensus is mostly the user's own rating + prior
 
 
 class AlignmentResult(NamedTuple):
@@ -56,6 +60,56 @@ def alignment_score(session: Session, user_id: int, cuisine_id: int) -> Alignmen
     # element, which is the correlation between the two input arrays.
     corr = float(np.corrcoef(user_scores, trusted_scores)[0, 1])
     # Zero variance in either array (all identical scores) produces NaN.
+    if np.isnan(corr):
+        corr = 0.0
+
+    return AlignmentResult(score=corr, sufficient_overlap=True)
+
+
+def cluster_alignment_score(session: Session, user_id: int, cuisine_id: int) -> AlignmentResult:
+    """Phase 2: Pearson correlation against the user's cluster consensus.
+
+    The comparison set is the consensus of the user's own taste cluster —
+    agreement with people who rate like you, not with a global anchor. Falls
+    back to phase-1 alignment_score() (trusted-source average) whenever the
+    cluster data is insufficient: no assignment, or fewer than MIN_OVERLAP
+    restaurants shared with usable consensus rows.
+
+    Consensus rows need >= MIN_CONSENSUS_RATERS raters: the user's own rating
+    is part of their cluster's consensus, and against a 1-rater row they would
+    mostly be correlating with themselves.
+    """
+    assignment = session.get(UserClusterAssignment, (user_id, cuisine_id))
+    if assignment is None:
+        return alignment_score(session, user_id, cuisine_id)
+
+    consensus = {
+        row.restaurant_id: row.consensus
+        for row in session.execute(
+            select(ClusterRestaurantScore.restaurant_id, ClusterRestaurantScore.consensus)
+            .where(ClusterRestaurantScore.cluster_id == assignment.cluster_id)
+            .where(ClusterRestaurantScore.rater_count >= MIN_CONSENSUS_RATERS)
+        )
+    }
+
+    # latest rating per restaurant — same convention as the clustering module
+    rows = session.execute(
+        select(RatingEvent.restaurant_id, RatingEvent.score)
+        .join(Restaurant, RatingEvent.restaurant_id == Restaurant.id)
+        .where(RatingEvent.user_id == user_id)
+        .where(Restaurant.cuisine_id == cuisine_id)
+        .order_by(RatingEvent.id)
+    ).all()
+    latest = {r.restaurant_id: r.score for r in rows}
+
+    overlap = sorted(rid for rid in latest if rid in consensus)
+    if len(overlap) < MIN_OVERLAP:
+        return alignment_score(session, user_id, cuisine_id)
+
+    corr = float(np.corrcoef(
+        [latest[rid] for rid in overlap],
+        [consensus[rid] for rid in overlap],
+    )[0, 1])
     if np.isnan(corr):
         corr = 0.0
 

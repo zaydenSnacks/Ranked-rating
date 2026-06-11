@@ -70,3 +70,33 @@ def test_score_always_in_unit_interval(session):
 
     score = credibility_score(session, u.id, c.id)
     assert 0.0 <= score <= 1.0
+
+
+def test_cluster_alignment_feeds_credibility_score(session):
+    """Phase 2: with cluster state present, alignment comes from cluster
+    consensus — no trusted sources needed for a full-formula score."""
+    from modules.credibility.score import W_ALIGNMENT
+    from tests.conftest import add_assignment, add_cluster, add_cluster_score
+
+    u = add_user(session)
+    c = add_cuisine(session)
+    rests = [add_restaurant(session, c.id) for _ in range(MIN_OVERLAP)]
+    for r, s in zip(rests, [3.0, 5.0, 9.0]):
+        add_rating(session, u.id, r.id, s)
+
+    without_clusters = credibility_score(session, u.id, c.id)  # redistributed
+
+    cluster = add_cluster(session, c.id)
+    add_assignment(session, u.id, c.id, cluster.id)
+    for r, s in zip(rests, [3.1, 5.2, 8.9]):  # near-perfect agreement
+        add_cluster_score(session, cluster.id, r.id, s)
+
+    with_clusters = credibility_score(session, u.id, c.id)
+
+    exp_val = math.log(MIN_OVERLAP + 1) / math.log(MAX_N + 1)
+    assert without_clusters == pytest.approx(
+        (W_EXPERTISE * exp_val) / (W_EXPERTISE + W_PROXIMITY)
+    )
+    # alignment ≈ 1.0 now carries α's weight on the full formula
+    assert with_clusters == pytest.approx(W_ALIGNMENT + W_EXPERTISE * exp_val, abs=0.01)
+    assert with_clusters > without_clusters

@@ -4,8 +4,8 @@ from sqlalchemy.orm import sessionmaker
 
 from modules.data.db import Base
 from modules.data.models import (
-    Cuisine, CuisineDistance, RatingEvent, Restaurant,
-    TrustedSource, User, UserCredibility,
+    Cluster, ClusterRestaurantScore, Cuisine, CuisineDistance, RatingEvent,
+    Restaurant, TrustedSource, User, UserClusterAssignment, UserCredibility,
 )
 
 NOW = "2024-01-01T00:00:00+00:00"
@@ -83,3 +83,30 @@ def add_credibility(s, user_id: int, cuisine_id: int, cs=0.5, rd=0.3, vol=0.06) 
     )
     s.add(rec); s.flush()
     return rec
+
+
+def add_cluster(s, cuisine_id: int, coherence=0.8, member_count=0, label="k0") -> Cluster:
+    c = Cluster(
+        cuisine_id=cuisine_id, label=label,
+        coherence_score=coherence, member_count=member_count, created_at=NOW,
+    )
+    s.add(c); s.flush()
+    return c
+
+
+def add_assignment(s, user_id: int, cuisine_id: int, cluster_id: int, confidence=1.0) -> UserClusterAssignment:
+    a = UserClusterAssignment(
+        user_id=user_id, cuisine_id=cuisine_id, cluster_id=cluster_id,
+        confidence=confidence, assigned_at=NOW,
+    )
+    s.add(a); s.flush()
+    return a
+
+
+def add_cluster_score(s, cluster_id: int, restaurant_id: int, consensus: float, rater_count=2) -> ClusterRestaurantScore:
+    row = ClusterRestaurantScore(
+        cluster_id=cluster_id, restaurant_id=restaurant_id,
+        consensus=consensus, rater_count=rater_count, last_updated=NOW,
+    )
+    s.add(row); s.flush()
+    return row

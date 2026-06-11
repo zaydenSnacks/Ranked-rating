@@ -65,8 +65,8 @@ ranked-rating/
 - Phase 1: fixed formula, SQLite, seed data, ranking engine — done
 - Phase 2a: Glicko dynamic credibility + Bayesian ranking prior — done
 - Phase 2b: cluster discovery via k-means + Yelp data import + cluster-relative consensus — **in progress** (this is the conceptual upgrade that prevents the system from drifting toward a simple average)
-  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI
-  - remaining: run the Yelp import, wire `alignment.py` to cluster consensus (step 4), wire `ranking.py` to surface highest-coherence cluster (step 5), Taco-Bell-vs-Ichiran validation
+  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI, alignment vs cluster consensus (`cluster_alignment_score`)
+  - remaining: run the Yelp import, wire `ranking.py` to surface highest-coherence cluster (step 5), Taco-Bell-vs-Ichiran validation
 - Phase 3+: matrix factorization, real-time inference, UI v1 — designed in SPEC.md, not started
 - Phase 4: GNN, stream processing, UI v2 — designed in SPEC.md, not started
 
@@ -241,6 +241,6 @@ Missing vector entries are filled with the cuisine average (`MISSING_VALUE_FILL 
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
-- Clustering is built but not yet wired into `alignment.py` (step 4) or `ranking.py` (step 5) — cluster state is computed and stored, nothing reads it yet
+- `ranking.py` does not read cluster state yet (build step 5) — alignment does, via `cluster_alignment_score`
 - Seed data alone can't produce clusters: no seed user has ≥ 3 ratings in a single cuisine, so `cluster` is a no-op until the Yelp import runs
 - No story yet for handling restaurants that span two cuisines (e.g., Korean-Mexican fusion) — open question in SPEC.md

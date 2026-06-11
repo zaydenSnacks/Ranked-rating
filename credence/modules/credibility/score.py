@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from .alignment import alignment_score
+from .alignment import cluster_alignment_score
 from .expertise import expertise_score
 from .proximity import proximity_score
 
@@ -18,11 +18,14 @@ def credibility_score(
 
     Implements: clamp(α·alignment + β·expertise + γ·proximity, 0, 1)
 
-    When alignment has insufficient trusted-source overlap, α's weight is
-    redistributed proportionally across expertise and proximity so the score
-    stays in [0, 1] rather than being artificially capped at 0.5.
+    Alignment correlates against the user's cluster consensus (phase 2),
+    falling back internally to the trusted-source average (phase 1) when
+    cluster data is insufficient. When neither comparison set has enough
+    overlap, α's weight is redistributed proportionally across expertise and
+    proximity so the score stays in [0, 1] rather than being artificially
+    capped at 0.5.
     """
-    align, sufficient_overlap = alignment_score(session, user_id, cuisine_id)
+    align, sufficient_overlap = cluster_alignment_score(session, user_id, cuisine_id)
     exp = expertise_score(session, user_id, cuisine_id)
     prox = proximity_score(session, user_id, cuisine_id)
 
