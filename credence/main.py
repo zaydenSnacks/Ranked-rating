@@ -31,6 +31,70 @@ def seed():
 
 
 @app.command()
+def cluster():
+    """Run k-means clustering across all cuisines (rebuilds all cluster state)."""
+    from modules.clustering.discover import recluster_all
+    from modules.data.models import Cuisine
+    with _session() as s:
+        results = recluster_all(s)
+        names = {c.id: c.name for c in s.query(Cuisine)}
+        s.commit()
+
+    table = Table(title="clustering run", show_header=True)
+    table.add_column("cuisine")
+    table.add_column("users",     justify="right")
+    table.add_column("clusters",  justify="right")
+    table.add_column("planted",   justify="right")
+    table.add_column("score rows", justify="right")
+    for cuisine_id, stats in results.items():
+        if stats is None:
+            table.add_row(names[cuisine_id], "—", "—", "—", "—")
+        else:
+            table.add_row(
+                names[cuisine_id], str(stats["users"]), str(stats["clusters"]),
+                str(stats["planted"]), str(stats["score_rows"]),
+            )
+    console.print(table)
+
+
+@app.command()
+def user_clusters(
+    user_id: int = typer.Argument(..., help="user ID"),
+):
+    """Show the user's cluster assignment per cuisine."""
+    from sqlalchemy import select
+    from modules.data.models import Cluster, Cuisine, User, UserClusterAssignment
+    with _session() as s:
+        user = s.get(User, user_id)
+        if user is None:
+            console.print(f"[red]user {user_id} not found[/red]"); raise typer.Exit(1)
+
+        rows = s.execute(
+            select(Cuisine.name, Cluster.label, UserClusterAssignment.confidence,
+                   Cluster.coherence_score, Cluster.member_count)
+            .join(Cluster, UserClusterAssignment.cluster_id == Cluster.id)
+            .join(Cuisine, UserClusterAssignment.cuisine_id == Cuisine.id)
+            .where(UserClusterAssignment.user_id == user_id)
+            .order_by(Cuisine.name)
+        ).all()
+        user_name = user.name
+
+    if not rows:
+        console.print(f"{user_name} has no cluster assignments — run [bold]cluster[/bold] first")
+        return
+
+    table = Table(title=f"{user_name}  (id={user_id})", show_header=True)
+    table.add_column("cuisine")
+    table.add_column("cluster")
+    table.add_column("confidence", justify="right")
+    table.add_column("coherence",  justify="right")
+    table.add_column("members",    justify="right")
+    for r in rows:
+        table.add_row(r.name, r.label, f"{r.confidence:.2f}", f"{r.coherence_score:.2f}", str(r.member_count))
+    console.print(table)
+
+
+@app.command()
 def import_yelp(
     path:             str = typer.Option(..., "--path", help="directory containing the Yelp Academic Dataset JSON files"),
     city:             str = typer.Option(None, help="only import businesses in this city"),

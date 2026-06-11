@@ -110,7 +110,7 @@ Cluster consensus uses the same Bayesian prior internally — the prior just get
 | 4 | GNN-based credibility, stream processing, UI v2 | millions | Kafka, FAISS, full product |
 
 - **Phase 1** (done): data model + seed data + credibility formula + ranking engine
-- **Phase 2** (in progress): Glicko-inspired dynamic credibility (done), Bayesian ranking prior (done), **cluster discovery via k-means (new — replaces global consensus with cluster-relative consensus)**, Yelp dataset import for bootstrapping
+- **Phase 2** (in progress): Glicko-inspired dynamic credibility (done), Bayesian ranking prior (done), Yelp dataset importer (done), **cluster discovery via k-means (module done — replaces global consensus with cluster-relative consensus)**; remaining: run the Yelp import, wire alignment + ranking to cluster state, Taco-Bell validation
 - **Phase 3**: async credibility jobs, Redis cache, **matrix factorization replaces k-means for clustering**, FastAPI layer, React UI v1
 - **Phase 4**: Kafka stream processing, **graph neural network unifies clustering + credibility + proximity**, learned α/β/γ weights, full product UI v2
 

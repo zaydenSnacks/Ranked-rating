@@ -69,5 +69,23 @@ Timestamps stay ISO text like every other table (one consistent convention; the 
 
 ---
 
+## clustering implementation choices
+
+**Hand-rolled k-means (numpy), fixed seed.** No sklearn dependency for an algorithm that phase 3 deletes — plain Lloyd's in ~25 lines, `seed=0` so clusters are deterministic for a given event log (re-runs and tests reproduce exactly). Empty clusters are reseeded with the farthest point. k is capped at the user count.
+
+**Rating vectors: latest rating wins, cuisine-average fill.** A user's vector takes their most recent rating per restaurant (append-only log → latest = current opinion). Missing entries fill with the cuisine average per `MISSING_VALUE_FILL` — a neutral value that neither inflates nor deflates correlation against other members.
+
+**Assignment confidence: `1 − d_nearest/d_second_nearest`.** 0 when a user sits exactly between two centroids, → 1 when the assigned centroid is far closer than any alternative. Planted trusted sources get confidence 1.0 outright — their placement is a prior, not a distance measurement.
+
+**Coherence: average pairwise raw Pearson r (not remapped).** Anti-correlated members should drag coherence negative rather than land at 0.25 the way alignment's `(r+1)/2` remap would; `MIN_COHERENCE = 0.50` then reads as "members genuinely agree". Zero-variance vectors produce NaN pairs which contribute 0 (no signal ≠ agreement). Singleton clusters score 0.
+
+**Consensus: ranking's Bayesian prior, applied within the cluster.** Same formula and `PRIOR_WEIGHT = 3.0` as `ranking.restaurant_score()`, with member ratings weighted by the same effective-weight fallback chain. The constant and the 4-line weight helper are duplicated in `consensus.py` rather than imported from `ranking.py`, because ranking will import consensus in build step 5 — importing both ways would be circular. Rows are stored for every (cluster, restaurant) with ≥ 1 rater; the `MIN_RATERS_PER_CLUSTER` surfacing threshold belongs to the ranking layer.
+
+**Seed planting: nearest centroid to the trusted sources' mean vector.** The "expected calibrated cluster" is wherever the trusted palate collectively points. Planting rewrites this run's labels before anything persists (so coherence, member_count, and consensus all see the planted membership) and is recomputed from scratch each run — membership can change, per the invariant.
+
+**Re-clustering deletes and rebuilds.** `recluster_cuisine()` clears the cuisine's clusters, assignments, and scores first, even when the cuisine turns out too sparse to recluster — stale clusters are worse than none.
+
+---
+
 ## seed.sql rescaled to the 1–10 scale
 The seed ratings were authored on a 5-star scale (3.5–5.0) while the system math assumes 1–10 (`SCORE_RANGE = 9.0`, CLI help, Bayesian prior). Left alone, the trusted-source seeds would read as harsh outliers ("8.875 means excellent" vs "4.5 means below average") once Yelp data lands at full range — and they anchor the calibrated cluster, so their absolute level matters. Converted with the **same affine map the importer uses** (`1 + (stars − 1) × 2.25`) so seed and Yelp data share one conversion story. Pearson alignment is affine-invariant, but the absolute deltas in `dynamic.py` (agreement threshold) and consensus distances are not — one map everywhere avoids a systematic offset between cohorts.

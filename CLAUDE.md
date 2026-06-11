@@ -23,7 +23,7 @@ ranked-rating/
     │   ├── test_dynamic.py
     │   ├── test_ranking.py
     │   ├── test_yelp_importer.py
-    │   └── test_clustering.py    — phase 2 clustering tests (planned)
+    │   └── test_clustering.py
     ├── modules/
     │   ├── data/
     │   │   ├── db.py        — SQLAlchemy engine + session factory (DATABASE_URL env var)
@@ -37,11 +37,11 @@ ranked-rating/
     │   │   ├── proximity.py — transitive expertise from adjacent cuisines
     │   │   ├── dynamic.py   — Glicko-inspired credibility updates (phase 2)
     │   │   └── seeds.py     — seed trusted sources with low rating_deviation (phase 2)
-    │   ├── clustering/      — phase 2 (in progress)
-    │   │   ├── discover.py  — k-means on rating vectors per cuisine
-    │   │   ├── assign.py    — assign users to clusters, store confidence
-    │   │   ├── consensus.py — compute per-cluster restaurant scores
-    │   │   ├── coherence.py — measure intra-cluster consistency
+    │   ├── clustering/      — phase 2b
+    │   │   ├── discover.py  — k-means on rating vectors + recluster_cuisine/recluster_all orchestration
+    │   │   ├── assign.py    — persist assignments with confidence (1 − d1/d2)
+    │   │   ├── consensus.py — per-cluster restaurant scores (Bayesian prior within cluster)
+    │   │   ├── coherence.py — avg pairwise Pearson between members' rating vectors
     │   │   └── seeds.py     — plant trusted sources into expected calibrated cluster
     │   ├── ranking/
     │   │   └── ranking.py   — surfaces highest-coherence cluster score, falls back to Bayesian prior
@@ -65,6 +65,8 @@ ranked-rating/
 - Phase 1: fixed formula, SQLite, seed data, ranking engine — done
 - Phase 2a: Glicko dynamic credibility + Bayesian ranking prior — done
 - Phase 2b: cluster discovery via k-means + Yelp data import + cluster-relative consensus — **in progress** (this is the conceptual upgrade that prevents the system from drifting toward a simple average)
+  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI
+  - remaining: run the Yelp import, wire `alignment.py` to cluster consensus (step 4), wire `ranking.py` to surface highest-coherence cluster (step 5), Taco-Bell-vs-Ichiran validation
 - Phase 3+: matrix factorization, real-time inference, UI v1 — designed in SPEC.md, not started
 - Phase 4: GNN, stream processing, UI v2 — designed in SPEC.md, not started
 
@@ -186,10 +188,10 @@ python main.py rate 3 5 4.0
 # print weighted score + per-rater credibility breakdown for a restaurant
 python main.py score 5
 
-# planned (phase 2): run k-means clustering across all cuisines
+# run k-means clustering across all cuisines (rebuilds all cluster state)
 python main.py cluster
 
-# planned (phase 2): show user's cluster per cuisine
+# show user's cluster per cuisine
 python main.py user-clusters 3
 ```
 
@@ -221,14 +223,16 @@ python -m viz.generate   # writes PNGs to viz/output/
 
 Agreement threshold: `|user_score − consensus| < 4.5` (i.e., `agreement >= 0.5`).
 
-### clustering (planned)
-| Constant | Value | Meaning |
-|---|---|---|
-| `K_INITIAL` | 4 | starting k for k-means per cuisine (calibrated/casual/inflator/complainer archetypes) |
-| `MIN_RATERS_PER_CLUSTER` | 5 | minimum cluster members before it can surface a restaurant score |
-| `MIN_COHERENCE` | 0.50 | minimum coherence for a cluster to be considered "calibrated enough" to surface scores |
-| `MIN_RATINGS_FOR_VECTOR` | 3 | minimum user ratings in a cuisine before they get a meaningful rating vector |
-| `MISSING_VALUE_FILL` | cuisine_avg | how to fill missing entries in user rating vectors |
+### clustering
+| Constant | Value | Lives in | Meaning |
+|---|---|---|---|
+| `K_INITIAL` | 4 | discover.py | starting k for k-means per cuisine (calibrated/casual/inflator/complainer archetypes) |
+| `MIN_RATERS_PER_CLUSTER` | 5 | consensus.py | minimum cluster members rating a restaurant before its cluster score can surface |
+| `MIN_COHERENCE` | 0.50 | coherence.py | minimum coherence for a cluster to be considered "calibrated enough" to surface scores |
+| `MIN_RATINGS_FOR_VECTOR` | 3 | discover.py | minimum user ratings in a cuisine before they get a meaningful rating vector |
+| `KMEANS_SEED` | 0 | discover.py | fixed RNG seed — clusters are deterministic for a given event log |
+
+Missing vector entries are filled with the cuisine average (`MISSING_VALUE_FILL = cuisine_avg`, implemented inline in `build_rating_matrix`). Rating vectors use the **latest rating per (user, restaurant)**.
 
 ## known gaps
 
@@ -237,4 +241,6 @@ Agreement threshold: `|user_score − consensus| < 4.5` (i.e., `agreement >= 0.5
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
+- Clustering is built but not yet wired into `alignment.py` (step 4) or `ranking.py` (step 5) — cluster state is computed and stored, nothing reads it yet
+- Seed data alone can't produce clusters: no seed user has ≥ 3 ratings in a single cuisine, so `cluster` is a no-op until the Yelp import runs
 - No story yet for handling restaurants that span two cuisines (e.g., Korean-Mexican fusion) — open question in SPEC.md
