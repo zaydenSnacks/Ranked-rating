@@ -3,7 +3,7 @@
 Usage (from credence/):
     python -m viz.generate
 """
-from . import components, dynamic, ranking
+from . import clustering, components, dynamic, ranking
 from ._common import OUTPUT
 
 
@@ -11,6 +11,7 @@ def main() -> None:
     components.main()
     dynamic.main()
     ranking.main()
+    clustering.main()
     print(f"wrote plots to {OUTPUT}")
 
 

@@ -15,6 +15,7 @@ plot is wrong; fix it.
 | `components.py` | expertise log curve, proximity distance decay, full `α·a + β·e + γ·p` surface, alignment redistribution fallback | `modules/credibility/{expertise,proximity,alignment,score}.py` |
 | `dynamic.py` | Glicko-inspired credibility trajectories: agreement vs. divergence, effect of `DAMPEN`, `LEARNING_RATE`, community weight | `modules/credibility/dynamic.py` |
 | `ranking.py` | weighted average vs. simple average, Bayesian prior shrinkage (phase 2) | `modules/ranking/ranking.py` + SPEC §phase 2 |
+| `clustering.py` | k-means discovery of taste groups, coherence vs noise (and mixed-cluster collapse), assignment confidence `1 − d1/d2`, the coherence-gated surfacing decision | `modules/clustering/{discover,assign,coherence,consensus}.py` + surfacing rule in `modules/ranking/ranking.py` |
 
 Generated PNGs land in `viz/output/`. They are committed so the plots are
 reviewable in PR diffs without running anything.
@@ -22,11 +23,33 @@ reviewable in PR diffs without running anything.
 ## regenerate
 
 ```
-pip install -r requirements.txt   # adds matplotlib
+pip install matplotlib            # dev-only dependency, deliberately not in requirements.txt
 python -m viz.generate            # writes PNGs into viz/output/
 ```
 
 Run from the `credence/` directory.
+
+## phase 2b — what changed (cluster-relative credibility)
+
+Phase 2b replaced the single global consensus with per-cluster consensus, and
+the four `clustering.py` plots illustrate the new mechanics end to end:
+
+- **10_kmeans_discovery** — taste groups are recovered from rating vectors
+  alone. The casual majority being 3× larger changes its cluster's *size*,
+  not whether the calibrated minority gets its own cluster.
+- **11_coherence** — coherence (avg pairwise raw Pearson r between member
+  vectors) is the surfacing criterion. A genuine taste group survives noise;
+  a wrongly-merged cluster nets out near zero and never surfaces.
+- **12_assignment_confidence** — `1 − d_nearest/d_second_nearest` ∈ [0, 1];
+  0 means "between two clusters", planted trusted sources get 1.0 outright.
+- **13_cluster_surfacing** — the Taco Bell mechanic: once a cluster passes
+  `MIN_COHERENCE` and has `MIN_RATERS_PER_CLUSTER` raters on a restaurant,
+  its consensus *is* the score. Member count appears nowhere in the decision,
+  so volume can no longer outvote calibration.
+
+K-means is mirrored faithfully (same Lloyd's algorithm, same seed) but is a
+deliberate placeholder — phase 3 swaps it for matrix factorization, at which
+point plot 10 should be replaced, not extended.
 
 ## MAINTENANCE — read before merging math or infra changes
 

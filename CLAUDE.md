@@ -54,7 +54,7 @@ ranked-rating/
         ├── components.py    — phase 1 formula plots
         ├── dynamic.py       — phase 2 Glicko trajectory plots
         ├── ranking.py       — ranking formula plots
-        ├── clustering.py    — cluster visualizations (planned)
+        ├── clustering.py    — k-means discovery, coherence, confidence, surfacing-gate plots
         └── output/          — committed PNGs (regenerate after any math change)
 ```
 
