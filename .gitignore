@@ -4,3 +4,4 @@ __pycache__/
 .env
 .claude
 .DS_Store
+yelp_dataset/
