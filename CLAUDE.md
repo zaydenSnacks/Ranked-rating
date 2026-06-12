@@ -65,8 +65,8 @@ ranked-rating/
 - Phase 1: fixed formula, SQLite, seed data, ranking engine — done
 - Phase 2a: Glicko dynamic credibility + Bayesian ranking prior — done
 - Phase 2b: cluster discovery via k-means + Yelp data import + cluster-relative consensus — **in progress** (this is the conceptual upgrade that prevents the system from drifting toward a simple average)
-  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI, alignment vs cluster consensus (`cluster_alignment_score`)
-  - remaining: run the Yelp import, wire `ranking.py` to surface highest-coherence cluster (step 5), Taco-Bell-vs-Ichiran validation
+  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI, alignment vs cluster consensus (`cluster_alignment_score`), ranking surfaces highest-coherence cluster (`surfaced_cluster_score`)
+  - remaining: run the Yelp import, Taco-Bell-vs-Ichiran validation, tune `MIN_COHERENCE` empirically
 - Phase 3+: matrix factorization, real-time inference, UI v1 — designed in SPEC.md, not started
 - Phase 4: GNN, stream processing, UI v2 — designed in SPEC.md, not started
 
@@ -98,7 +98,7 @@ Phase 2 alignment correlates against **cluster consensus**, not the global trust
 final_score = (3.0 × global_avg + Σ(rating_i × weight_i)) / (3.0 + Σ weight_i)
 ```
 
-**Phase 2 (cluster-aware — in progress):**
+**Phase 2 (cluster-aware — done):**
 ```
 if highest-coherence cluster has >= MIN_RATERS for this restaurant:
     final_score = cluster_restaurant_scores[surfaced_cluster.id][R.id].consensus
@@ -241,6 +241,5 @@ Missing vector entries are filled with the cuisine average (`MISSING_VALUE_FILL 
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
-- `ranking.py` does not read cluster state yet (build step 5) — alignment does, via `cluster_alignment_score`
 - Seed data alone can't produce clusters: no seed user has ≥ 3 ratings in a single cuisine, so `cluster` is a no-op until the Yelp import runs
 - No story yet for handling restaurants that span two cuisines (e.g., Korean-Mexican fusion) — open question in SPEC.md

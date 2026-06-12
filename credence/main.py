@@ -168,7 +168,7 @@ def score(
     restaurant_id: int = typer.Argument(..., help="restaurant ID"),
 ):
     """Print the credibility-weighted score for a restaurant."""
-    from modules.ranking.ranking import restaurant_score
+    from modules.ranking.ranking import restaurant_score, surfaced_cluster_score
     from modules.data.models import Restaurant, RatingEvent, UserCredibility
     from sqlalchemy import select, func
     with _session() as s:
@@ -177,6 +177,12 @@ def score(
             console.print(f"[red]restaurant {restaurant_id} not found[/red]"); raise typer.Exit(1)
 
         weighted = restaurant_score(s, restaurant_id)
+        surfaced = surfaced_cluster_score(s, restaurant_id, restaurant.cuisine_id)
+        source = (
+            f"cluster {surfaced.cluster.label} "
+            f"(coherence {surfaced.cluster.coherence_score:.2f}, {surfaced.rater_count} raters)"
+            if surfaced else "Bayesian prior over all raters"
+        )
 
         rows = s.execute(
             select(RatingEvent.user_id, RatingEvent.score)
@@ -198,6 +204,7 @@ def score(
 
     console.print(table)
     console.print(f"\nweighted score: [bold]{weighted:.3f}[/bold]  ({rating_count} ratings)")
+    console.print(f"source: {source}")
 
 
 if __name__ == "__main__":
