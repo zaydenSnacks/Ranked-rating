@@ -71,6 +71,12 @@ Timestamps stay ISO text like every other table (one consistent convention; the 
 
 **Sparse users dropped at import.** Users with fewer than `min_user_reviews` (default 3 = `MIN_RATINGS_FOR_VECTOR`) qualifying reviews are not imported — they could never get a rating vector, so they'd only bloat the users table. Two streaming passes over the review file (count, then insert) keep memory at one small dict; the NDJSON files are too large to load whole.
 
+**Known accepted noise: category misrepresentation (revisit before tuning MIN_COHERENCE).** Yelp's `categories` field is flat with no "primary" marker, so a venue whose identity isn't a restaurant can still import cleanly if it carries exactly one mapped cuisine tag. Measured on the Philadelphia import (2026-06): Reading Terminal Market — an 80-stall food hall with a Dim Sum tag — imported as Chinese and holds **10.8% of all Chinese-cuisine ratings** (3,043 of 28,137); the Philadelphia Museum of Art imported as American via its café. Every other cuisine's top venue is legitimate (Bonchon, Terakawa Ramen, Barbuzzo, Parc), so the distortion is concentrated in roughly one venue.
+
+Why accepted for now: restaurant-level scores stay honest (the score measures the venue; only its cuisine shelf is wrong); rating-vector dilution from one noisy column among 382 Chinese restaurants degrades clustering gracefully; and phase 3 matrix factorization learns from co-rating patterns, not category labels, shrinking the blast radius. Effects that DO accumulate: cuisine leaderboards (food hall tops "best Chinese"), modest expertise/alignment inflation, and downward pressure on Chinese-cluster coherence.
+
+Revisit triggers — do the fix when any of these arrive: (1) before empirically tuning `MIN_COHERENCE`, since 10.8% label noise in Chinese could skew the threshold; (2) before phase 3 ships cuisine leaderboards; (3) if Chinese clusters look degenerate vs other cuisines. The fix is a category blocklist in the importer (skip businesses also tagged `Public Markets`, `Museums`, `Grocery`, `Food Court`, etc.) — ~10 lines, but requires a fresh import and cluster rebuild since the importer is one-shot.
+
 ---
 
 ## clustering implementation choices

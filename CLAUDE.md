@@ -241,5 +241,6 @@ Missing vector entries are filled with the cuisine average (`MISSING_VALUE_FILL 
 - `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
+- Yelp category mapping admits non-restaurant venues with one cuisine tag (Reading Terminal Market = 10.8% of Chinese ratings) — accepted noise, fix via importer blocklist **before tuning `MIN_COHERENCE` or shipping leaderboards**; see DECISIONS.md
 - Seed data alone can't produce clusters: no seed user has ≥ 3 ratings in a single cuisine, so `cluster` is a no-op until the Yelp import runs
 - No story yet for handling restaurants that span two cuisines (e.g., Korean-Mexican fusion) — open question in SPEC.md

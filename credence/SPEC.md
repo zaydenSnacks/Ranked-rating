@@ -632,6 +632,7 @@ A high-coherence cluster — one where members consistently agree with each othe
 - What is the floor for `credibility_score`? Can a user go to 0 or is there a minimum?
 - Should cuisine distances be static (manual table) or learned from rating patterns? (Phase 3 learns them.)
 - How do you handle a restaurant that spans two cuisines (e.g. Korean-Mexican fusion)?
+- Imported category labels misrepresent some venues (a food hall with a Dim Sum tag imports as Chinese — 10.8% of Philadelphia's Chinese-cuisine ratings). Accepted for now; blocklist fix + re-import queued behind concrete triggers — see DECISIONS.md "known accepted noise".
 - Moderation: what happens when a coordinated group tries to game the credibility system? (Cluster coherence helps — coordinated groups form a low-coherence cluster on real restaurants.)
 - Should users be able to see their own credibility score and cluster assignment? Transparent or hidden?
 - External data: when does it make sense to pull in Google Places / Yelp data to supplement seed restaurant metadata?
