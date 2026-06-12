@@ -24,8 +24,12 @@ The spec uses hyphens in directory names. Python package imports require valid i
 
 ---
 
-## Pearson normalization
-Raw Pearson r ∈ [-1, 1]. Alignment score needs to be ∈ [0, 1]. Mapping: `(r + 1) / 2`. A perfectly anti-correlated rater gets 0, perfectly correlated gets 1, uncorrelated gets 0.5. Minimum of 2 overlapping restaurants required to compute a meaningful correlation; returns 0 otherwise.
+## Pearson handling in alignment
+*(rewritten 2026-06 — the original entry described an `(r + 1) / 2` remap with a 2-restaurant minimum, which is not what shipped)*
+
+`alignment_score()` returns **raw Pearson r ∈ [−1, 1]**; the credibility formula uses it directly and relies on the final `clamp(…, 0, 1)`. Negative correlation therefore actively drags the whole weighted sum down — an anti-correlated rater can lose the credit earned by expertise and proximity, which is harsher (and more deserved) than the 0 an `(r + 1) / 2` remap would have given them. Uncorrelated raters get 0 alignment, not 0.5.
+
+Minimum overlap is **3 restaurants** (`MIN_OVERLAP`), not 2; below it the function returns `(0.0, sufficient_overlap=False)` and the caller redistributes α's weight across expertise and proximity rather than treating 0 as a measured correlation.
 
 ---
 
