@@ -109,3 +109,33 @@ Revisit triggers — do the fix when any of these arrive: (1) before empirically
 
 ## seed.sql rescaled to the 1–10 scale
 The seed ratings were authored on a 5-star scale (3.5–5.0) while the system math assumes 1–10 (`SCORE_RANGE = 9.0`, CLI help, Bayesian prior). Left alone, the trusted-source seeds would read as harsh outliers ("8.875 means excellent" vs "4.5 means below average") once Yelp data lands at full range — and they anchor the calibrated cluster, so their absolute level matters. Converted with the **same affine map the importer uses** (`1 + (stars − 1) × 2.25`) so seed and Yelp data share one conversion story. Pearson alignment is affine-invariant, but the absolute deltas in `dynamic.py` (agreement threshold) and consensus distances are not — one map everywhere avoids a systematic offset between cohorts.
+
+---
+
+## first full-scale clustering run — findings (Philadelphia import, 2026-06-14)
+
+First `cluster` run over real volume (24,644 eligible users across 5 cuisines, 230,143 rating events). Mechanically clean — deterministic, single transaction, validation pairs ordered correctly (Domino's 3.98 vs Vetri Cucina 9.10; Applebee's 4.42 vs Middle Child 9.06). Two problems surfaced. They are coupled: the perf fix is the prerequisite for iterating on the coherence fix.
+
+### finding 1 — clustering takes ~1.5 h (performance, fix decided below)
+Wall time 1h29m. Root cause is an **N+1 query over an unindexed table**, two factors multiplying:
+- `consensus.compute_cluster_scores()` calls `_rater_weight()` once per **(cluster member × restaurant they rated)** — ~90,500 calls for Philadelphia. The weight depends only on `(user_id, cuisine_id)`, so this recomputes the same value many times (a user is recomputed once per restaurant they rated).
+- Each `credibility_score()` call fires ~6–7 SQL queries (alignment, expertise, one proximity count per adjacent cuisine), and `rating_events` has **only its primary key — no secondary indexes**. So every query full-scans 230k rows. Measured: **~29 ms/call → ~45 min in consensus alone**, plus coherence matrices and ~25k ORM assignment-row flushes.
+
+This is the `_community_consensus` N+1 noted in CLAUDE.md known gaps since phase 1 ("acceptable at phase 1 scale") finally coming due — except the hot path at scale is `consensus.py`, not `dynamic.py`. Note also: during a rebuild, `cluster_alignment_score` always misses (consensus rows don't exist yet) and falls through to the phase-1 path, so the most expensive query path runs precisely when it can't yet produce a cluster-relative answer.
+
+### finding 2 — coherence measures sparsity, not disagreement (open; fix proposed, not yet decided)
+Only **one** cluster in the entire system passed `MIN_COHERENCE = 0.50` (Japanese k0: 7 members, coherence 0.623 — a genuine sushi-regular group that correctly surfaced 3 sushi spots at 8.5–8.7). Every large cluster scored ≈ 0 (American k0: 0.003, Italian k1: 0.004), so **cluster surfacing never fired** — every validation score came from the Bayesian fallback.
+
+Cause: in the 13,772-member American k0, **88.6% of sampled member pairs share zero co-rated restaurants** (mean overlap 0.14). The current coherence metric correlates full, fill-imputed rating vectors; two members who never co-rated correlate at ≈ 0 regardless of whether they'd agree. So coherence currently measures **co-rating density, not taste agreement**, and at 2,771 restaurants with ~4 ratings/user that density is near-zero for everyone. Lowering `MIN_COHERENCE` is the wrong fix — it would just surface the biggest blob, i.e. the volume-wins failure mode the design exists to prevent.
+
+**Proposed redefinition (needs sign-off before implementing):** compute coherence as average pairwise Pearson **over co-rated restaurants only**, counting only member pairs with overlap ≥ 2–3, and require a minimum number of contributing pairs before trusting the number. This asks "when these people rate the same place, do they agree?" The k=4 giant-blob clustering (`K_INITIAL` on 14k users) is a secondary contributor. Do not tune `MIN_COHERENCE` until coherence is redefined and the data re-clustered.
+
+---
+
+## phase 2b performance fix: index rating_events + cache rater weights (decided)
+Two independent changes, both prerequisites for re-clustering at an iterable speed (and for the queued category-blocklist re-import):
+
+1. **Add secondary indexes on `rating_events(user_id)` and `rating_events(restaurant_id)`** (schema.sql + ORM). Every credibility read filters by `user_id` and joins on `restaurant_id`; today both full-scan. This is the 50–100× lever and it speeds up *every* read path, not just clustering. Single-column indexes match the existing convention (`ix_clusters_cuisine_id`, etc.); `(user_id)` is the primary win, `(restaurant_id)` covers the "all ratings for restaurant R" path in ranking/consensus.
+2. **Cache `_rater_weight` per `(user, cuisine)` inside `compute_cluster_scores`.** A member's weight is constant across the restaurants they rated, so a dict cache collapses ~90,500 calls → ~24,600 (one per eligible member). Pure in-function memoization, no behavior change.
+
+Expected: consensus step from ~45 min to well under a minute; full recluster from ~1.5 h to a few minutes. Deeper structural fixes (batch the weight queries, precompute all weights in one pass) are deferred — these two are small and sufficient. This also confirms the SPEC's phase-3 call that a full recluster is a **batch job, never request-path**, even when fast.

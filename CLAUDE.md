@@ -238,7 +238,8 @@ Missing vector entries are filled with the cuisine average (`MISSING_VALUE_FILL 
 
 - `matplotlib` is a dev dependency but not in `requirements.txt`
 - `credibility_history` does not store `volatility` — can't fully reconstruct Glicko state from history alone
-- `_community_consensus` in `dynamic.py` has an N+1 query pattern (acceptable at phase 1 scale)
+- **Clustering N+1 over unindexed `rating_events` → ~1.5 h per full recluster.** Hot path is `consensus.compute_cluster_scores` (and `_community_consensus` in `dynamic.py`); `rating_events` has no secondary indexes so credibility reads full-scan 230k rows. Fix decided (index `user_id`/`restaurant_id` + cache rater weights per (user,cuisine)) — see DECISIONS.md "phase 2b performance fix"
+- **Coherence currently measures sparsity, not agreement** — at full scale only 1 cluster passes `MIN_COHERENCE`, so surfacing never fires (88.6% of big-cluster member pairs never co-rated). Redefinition proposed (Pearson over co-rated restaurants only), not yet decided — see DECISIONS.md "first full-scale clustering run". **Don't tune `MIN_COHERENCE` until coherence is redefined.**
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
 - Yelp category mapping admits non-restaurant venues with one cuisine tag (Reading Terminal Market = 10.8% of Chinese ratings) — accepted noise, fix via importer blocklist **before tuning `MIN_COHERENCE` or shipping leaderboards**; see DECISIONS.md
