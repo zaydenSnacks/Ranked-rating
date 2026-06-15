@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 yelp_dataset/
 *.db-journal
+credence/exports/
