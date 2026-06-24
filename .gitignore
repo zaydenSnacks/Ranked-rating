@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 *.db
+*.db.*-bak
+*.log
 .env
 .claude
 .DS_Store
