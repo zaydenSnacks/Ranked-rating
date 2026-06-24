@@ -6,6 +6,8 @@ constants and formula shapes must be kept in sync by hand; see viz/README.md.
 """
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -16,6 +18,8 @@ K_INITIAL              = 4     # discover.py
 MIN_RATINGS_FOR_VECTOR = 3     # discover.py
 KMEANS_SEED            = 0     # discover.py
 MIN_COHERENCE          = 0.50  # coherence.py
+MIN_PAIR_OVERLAP       = 3     # coherence.py
+MIN_CONTRIBUTING_PAIRS = 3     # coherence.py
 MIN_RATERS_PER_CLUSTER = 5     # consensus.py
 PRIOR_WEIGHT           = 3.0   # consensus.py / ranking.py
 GLOBAL_AVG             = 7.0   # illustrative only
@@ -46,14 +50,25 @@ def kmeans(X: np.ndarray, k: int, seed: int = KMEANS_SEED, max_iter: int = 100):
 
 
 def coherence_score(vectors: np.ndarray) -> float:
-    """Mirror of coherence.coherence_score — avg pairwise raw Pearson r."""
+    """Mirror of coherence.coherence_score — average pairwise Pearson r over
+    each pair's *co-rated* restaurants. viz members are dense (every member rates
+    every restaurant), so each pair's overlap is the full vector and the sparsity
+    gates always pass; they're mirrored here for parity with production, which
+    sees sparse real data. Zero-variance pairs contribute 0. See viz/README.md."""
+    vectors = np.asarray(vectors)
     n = len(vectors)
-    if n < 2:
+    if n < 2 or vectors.shape[1] < MIN_PAIR_OVERLAP:
         return 0.0
-    with np.errstate(invalid="ignore", divide="ignore"):
-        corr = np.corrcoef(vectors)
-    corr = np.nan_to_num(corr, nan=0.0)
-    return float(corr[np.triu_indices(n, k=1)].mean())
+    corrs: list[float] = []
+    for i, j in itertools.combinations(range(n), 2):
+        a, b = vectors[i], vectors[j]
+        if a.std() == 0 or b.std() == 0:
+            corrs.append(0.0)
+        else:
+            corrs.append(float(np.corrcoef(a, b)[0, 1]))
+    if len(corrs) < MIN_CONTRIBUTING_PAIRS:
+        return 0.0
+    return float(np.mean(corrs))
 
 
 def assignment_confidence(x: np.ndarray, centroids: np.ndarray, label: int) -> float:

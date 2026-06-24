@@ -110,7 +110,7 @@ Cluster consensus uses the same Bayesian prior internally — the prior just get
 | 4 | GNN-based credibility, stream processing, UI v2 | millions | Kafka, FAISS, full product |
 
 - **Phase 1** (done): data model + seed data + credibility formula + ranking engine
-- **Phase 2** (in progress): Glicko-inspired dynamic credibility (done), Bayesian ranking prior (done), Yelp dataset importer (done), **cluster discovery via k-means (module done — replaces global consensus with cluster-relative consensus)**, cluster-relative alignment (done), cluster-aware ranking (done); remaining: run the Yelp import, Taco-Bell validation, tune MIN_COHERENCE
+- **Phase 2** (in progress): Glicko-inspired dynamic credibility (done), Bayesian ranking prior (done), Yelp dataset importer (done, Philadelphia ~230k events imported), **cluster discovery via k-means (module done — replaces global consensus with cluster-relative consensus)**, cluster-relative alignment (done), cluster-aware ranking (done), coherence redefined to co-rated-only Pearson (done); remaining: re-cluster + Taco-Bell validation on real data, category-blocklist re-import, tune MIN_COHERENCE
 - **Phase 3**: async credibility jobs, Redis cache, **matrix factorization replaces k-means for clustering**, FastAPI layer, React UI v1
 - **Phase 4**: Kafka stream processing, **graph neural network unifies clustering + credibility + proximity**, learned α/β/γ weights, full product UI v2
 
@@ -174,7 +174,7 @@ w = (0.30 × expertise + 0.20 × proximity) / 0.50   [redistributed]
 
 **Why k-means at this phase:** classical methods are robust on sparse data. ML-based clustering (matrix factorization, GNN) needs volume to learn anything meaningful. With a few thousand users and sparse ratings, ML will produce worse clusters than k-means. K-means is a placeholder that works — phase 3 replaces it with matrix factorization once data volume justifies it.
 
-**Cluster coherence score:** measures how internally consistent a cluster is. High coherence = members agree closely with each other on the same restaurants. Computed as the average pairwise correlation between members' rating vectors within the cluster.
+**Cluster coherence score:** measures how internally consistent a cluster is. High coherence = members agree closely with each other on the same restaurants. Computed as the average pairwise Pearson correlation between members, taken **over the restaurants each pair actually co-rated** (not over fill-imputed vectors — that measured co-rating density, not agreement; see DECISIONS.md "coherence redefinition"). A member pair contributes only with ≥ `MIN_PAIR_OVERLAP` co-rated restaurants, and a cluster needs ≥ `MIN_CONTRIBUTING_PAIRS` qualifying pairs or its coherence is 0.
 
 **Cluster recomputation:** nightly batch job in phase 2, online updates in phase 3.
 

@@ -139,6 +139,13 @@ def recluster_cuisine(session: Session, cuisine_id: int, k: int = K_INITIAL) -> 
     if matrix is None:
         return None
 
+    # member user_id → {restaurant_id: real score}, no fill values. Coherence
+    # correlates only co-rated restaurants, so it needs the sparse real ratings,
+    # not matrix.X (which is fill-imputed). Built once, reused per cluster.
+    ratings_by_user: dict[int, dict[int, float]] = {}
+    for (uid, rid), score in matrix.ratings.items():
+        ratings_by_user.setdefault(uid, {})[rid] = score
+
     labels, centroids = kmeans(matrix.X, k)
     labels, planted_user_ids = plant_trusted_seeds(session, matrix, labels, centroids)
 
@@ -150,7 +157,9 @@ def recluster_cuisine(session: Session, cuisine_id: int, k: int = K_INITIAL) -> 
         cluster = Cluster(
             cuisine_id=cuisine_id,
             label=f"k{j}",
-            coherence_score=coherence_score(matrix.X[member_idx]),
+            coherence_score=coherence_score(
+                [ratings_by_user[matrix.user_ids[i]] for i in member_idx]
+            ),
             member_count=len(member_idx),
             created_at=now,
         )

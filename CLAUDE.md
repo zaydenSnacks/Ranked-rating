@@ -41,7 +41,7 @@ ranked-rating/
     │   │   ├── discover.py  — k-means on rating vectors + recluster_cuisine/recluster_all orchestration
     │   │   ├── assign.py    — persist assignments with confidence (1 − d1/d2)
     │   │   ├── consensus.py — per-cluster restaurant scores (Bayesian prior within cluster)
-    │   │   ├── coherence.py — avg pairwise Pearson between members' rating vectors
+    │   │   ├── coherence.py — avg pairwise Pearson over each member pair's co-rated restaurants
     │   │   └── seeds.py     — plant trusted sources into expected calibrated cluster
     │   ├── ranking/
     │   │   └── ranking.py   — surfaces highest-coherence cluster score, falls back to Bayesian prior
@@ -60,13 +60,15 @@ ranked-rating/
 
 ## current phase
 
-**Phase 2 — dynamic credibility done, clustering in progress.**
+**Phase 2 — coherence redefined + validated (surfacing fires); category-blocklist re-import next.**
 
 - Phase 1: fixed formula, SQLite, seed data, ranking engine — done
 - Phase 2a: Glicko dynamic credibility + Bayesian ranking prior — done
-- Phase 2b: cluster discovery via k-means + Yelp data import + cluster-relative consensus — **in progress** (this is the conceptual upgrade that prevents the system from drifting toward a simple average)
-  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI, alignment vs cluster consensus (`cluster_alignment_score`), ranking surfaces highest-coherence cluster (`surfaced_cluster_score`)
-  - remaining: run the Yelp import, Taco-Bell-vs-Ichiran validation, tune `MIN_COHERENCE` empirically
+- Phase 2b: cluster discovery via k-means + Yelp data import + cluster-relative consensus — **all build steps coded; coherence redefined + validated on real data; cluster surfacing now fires**
+  - done: cluster tables, Yelp importer, clustering module (`discover`/`assign`/`coherence`/`consensus`/`seeds`), `cluster` + `user-clusters` CLI, alignment vs cluster consensus (`cluster_alignment_score`), ranking surfaces highest-coherence cluster (`surfaced_cluster_score`), Philadelphia Yelp import (230k events), perf fix (indexed `rating_events` + cached rater weights), **coherence redefinition (co-rated-only Pearson — signed off + implemented 2026-06-16)**, **validating re-cluster (2026-06-19): Vetri Cucina surfaces 8.61 from calibrated Italian cluster k0; both validation pairs separate**
+  - **resolved finding:** coherence used to measure co-rating *sparsity*, not agreement (only 1 cluster passed `MIN_COHERENCE` at scale). Now average pairwise Pearson over each pair's co-rated restaurants — see DECISIONS.md "coherence redefinition" + "validation run". Note: the redefinition was a *correctness* fix, NOT a perf fix — the recluster is still a ~40-min batch job (~4 GB peak); the earlier "removes the slowness" projection was wrong.
+  - **open after validation:** American + Japanese surface no cluster (best American 0.368) because `K_INITIAL = 4` on 14k users makes one mega-blob — a k-means granularity limit, not a coherence bug; don't over-tune k-means (phase 3 replaces it).
+  - then, in order: **category-blocklist re-import** (one-shot importer + fresh DB rebuild), and finally tune `MIN_COHERENCE` — do NOT tune it before the blocklist re-import (Reading Terminal Market noise could skew the threshold)
 - Phase 3+: matrix factorization, real-time inference, UI v1 — designed in SPEC.md, not started
 - Phase 4: GNN, stream processing, UI v2 — designed in SPEC.md, not started
 
@@ -116,7 +118,7 @@ else:
 - **Cluster surfacing uses coherence_score, not member_count** — a small high-coherence cluster beats a large low-coherence one
 - **K-means is a placeholder, not the destination** — phase 3 replaces it with matrix factorization. Don't over-tune k-means; it's expected to be rough
 - The viz module uses **standalone numpy** (no DB, no SQLAlchemy) and must stay in sync with production math
-- Coherence score is computed as **average pairwise correlation between cluster members' rating vectors** — high coherence = members agree closely
+- Coherence score is **average pairwise Pearson over each member pair's co-rated restaurants** (not fill-imputed vectors) — high coherence = members agree where they overlap. A pair counts only with ≥ `MIN_PAIR_OVERLAP` (3) co-rated restaurants; a cluster needs ≥ `MIN_CONTRIBUTING_PAIRS` (3) qualifying pairs or scores 0.0 (so 2-member clusters always score 0.0)
 
 ## data model (11 tables)
 
@@ -229,6 +231,8 @@ Agreement threshold: `|user_score − consensus| < 4.5` (i.e., `agreement >= 0.5
 | `K_INITIAL` | 4 | discover.py | starting k for k-means per cuisine (calibrated/casual/inflator/complainer archetypes) |
 | `MIN_RATERS_PER_CLUSTER` | 5 | consensus.py | minimum cluster members rating a restaurant before its cluster score can surface |
 | `MIN_COHERENCE` | 0.50 | coherence.py | minimum coherence for a cluster to be considered "calibrated enough" to surface scores |
+| `MIN_PAIR_OVERLAP` | 3 | coherence.py | co-rated restaurants a member pair needs before their Pearson r counts toward coherence |
+| `MIN_CONTRIBUTING_PAIRS` | 3 | coherence.py | qualifying pairs a cluster needs before its coherence is trusted (else 0.0) |
 | `MIN_RATINGS_FOR_VECTOR` | 3 | discover.py | minimum user ratings in a cuisine before they get a meaningful rating vector |
 | `KMEANS_SEED` | 0 | discover.py | fixed RNG seed — clusters are deterministic for a given event log |
 
@@ -239,7 +243,7 @@ Missing vector entries are filled with the cuisine average (`MISSING_VALUE_FILL 
 - `matplotlib` is a dev dependency but not in `requirements.txt`
 - `credibility_history` does not store `volatility` — can't fully reconstruct Glicko state from history alone
 - **Clustering N+1 over unindexed `rating_events` → ~1.5 h per full recluster.** Hot path is `consensus.compute_cluster_scores` (and `_community_consensus` in `dynamic.py`); `rating_events` has no secondary indexes so credibility reads full-scan 230k rows. Fix decided (index `user_id`/`restaurant_id` + cache rater weights per (user,cuisine)) — see DECISIONS.md "phase 2b performance fix"
-- **Coherence currently measures sparsity, not agreement** — at full scale only 1 cluster passes `MIN_COHERENCE`, so surfacing never fires (88.6% of big-cluster member pairs never co-rated). Redefinition proposed (Pearson over co-rated restaurants only), not yet decided — see DECISIONS.md "first full-scale clustering run". **Don't tune `MIN_COHERENCE` until coherence is redefined.**
+- **Coherence redefined + validated (2026-06-16 impl, 2026-06-19 validated).** Old metric measured sparsity not agreement (only 1 cluster passed `MIN_COHERENCE` at scale). Now average pairwise Pearson over each pair's co-rated restaurants — see DECISIONS.md "coherence redefinition" + "validation run". Surfacing now fires (Vetri Cucina 8.61 via Italian k0). Correctness fix only — recluster is still ~40 min / ~4 GB (the dense-`corrcoef` removal did not speed it up; the sparse pair dict is now the cost). **Still don't tune `MIN_COHERENCE` until after the category-blocklist re-import.**
 - `last_updated` stored as ISO text — will need `TIMESTAMP WITH TIME ZONE` in the Postgres migration
 - Cluster coherence threshold (`MIN_COHERENCE`) is a guess — needs empirical tuning once Yelp data is loaded
 - Yelp category mapping admits non-restaurant venues with one cuisine tag (Reading Terminal Market = 10.8% of Chinese ratings) — accepted noise, fix via importer blocklist **before tuning `MIN_COHERENCE` or shipping leaderboards**; see DECISIONS.md

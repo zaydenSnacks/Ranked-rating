@@ -9,7 +9,7 @@ from modules.clustering.discover import (
 )
 from modules.data.models import Cluster, ClusterRestaurantScore, UserClusterAssignment
 from tests.conftest import (
-    add_cuisine, add_rating, add_restaurant, add_trusted, add_user,
+    NOW, add_cluster, add_cuisine, add_rating, add_restaurant, add_trusted, add_user,
 )
 
 
@@ -96,20 +96,54 @@ def test_matrix_none_when_fewer_than_two_eligible_users(session):
 
 # ── coherence ─────────────────────────────────────────────────────────────────
 
+def members(*rows):
+    """Build the dict-list coherence_score now takes: each row is a member's
+    {restaurant_id: score}. A None entry means that member didn't rate that
+    restaurant (so it never enters the pair's co-rated set)."""
+    return [
+        {rid: score for rid, score in enumerate(row) if score is not None}
+        for row in rows
+    ]
+
+
 def test_coherence_high_for_agreeing_members():
-    vectors = np.array([[2.0, 5.0, 9.0], [2.5, 5.5, 9.5], [2.2, 5.1, 8.8]])
-    assert coherence_score(vectors) > 0.95
+    # 3 members co-rate the same 3 restaurants in a correlated pattern → 3 pairs
+    m = members([2.0, 5.0, 9.0], [2.5, 5.5, 9.5], [2.2, 5.1, 8.8])
+    assert coherence_score(m) > 0.95
 
 
-def test_coherence_negative_for_opposed_members():
-    vectors = np.array([[2.0, 5.0, 9.0], [9.0, 5.0, 2.0]])
-    assert coherence_score(vectors) < -0.95
+def test_coherence_negative_when_pairs_disagree():
+    # two agreeing camps with opposite tastes: within-camp pairs correlate +,
+    # cross-camp pairs correlate −; with 4 members (6 pairs) the mean goes < 0.
+    pattern = [2.0, 9.0, 4.0, 8.0, 6.0]
+    anti = [12.0 - x for x in pattern]
+    m = members(pattern, [x + 0.2 for x in pattern], anti, [x + 0.2 for x in anti])
+    assert coherence_score(m) < 0.0
 
 
-def test_coherence_zero_for_singleton_and_constant_vectors():
-    assert coherence_score(np.array([[1.0, 2.0, 3.0]])) == 0.0
-    # zero-variance member → NaN correlation → contributes 0, not agreement
-    assert coherence_score(np.array([[5.0, 5.0, 5.0], [1.0, 5.0, 9.0]])) == 0.0
+def test_coherence_zero_below_min_pair_overlap():
+    # every pair shares only 2 restaurants (< MIN_PAIR_OVERLAP=3): no pair counts
+    m = members([2.0, 5.0, None], [2.5, 5.5, None], [2.2, 5.1, None])
+    assert coherence_score(m) == 0.0
+
+
+def test_coherence_zero_below_min_contributing_pairs():
+    # a single agreeing pair (1 < MIN_CONTRIBUTING_PAIRS=3) → unmeasurable → 0.0
+    m = members([2.0, 5.0, 9.0], [2.5, 5.5, 9.5])
+    assert coherence_score(m) == 0.0
+
+
+def test_coherence_zero_for_singleton():
+    assert coherence_score(members([1.0, 2.0, 3.0])) == 0.0
+
+
+def test_coherence_zero_variance_pair_contributes_zero():
+    # the constant member's pairs add 0 (no signal), dragging the mean below the
+    # value the three varying members would have on their own.
+    flat = [5.0, 5.0, 5.0, 5.0]
+    m = members([2.0, 5.0, 4.0, 9.0], [2.2, 5.1, 4.1, 8.8], [1.8, 4.9, 3.9, 9.2], flat)
+    varying_only = members([2.0, 5.0, 4.0, 9.0], [2.2, 5.1, 4.1, 8.8], [1.8, 4.9, 3.9, 9.2])
+    assert coherence_score(m) < coherence_score(varying_only)
 
 
 # ── assignment confidence ─────────────────────────────────────────────────────
@@ -246,3 +280,48 @@ def test_recluster_all_covers_every_cuisine(session, two_taste_groups):
     results = recluster_all(session, k=2)
     assert results[cuisine.id]["clusters"] == 2
     assert results[other.id] is None
+
+
+# ── consensus weight cache (perf fix — must not change outputs) ────────────────
+
+def test_consensus_cache_matches_uncached(session, monkeypatch):
+    """The per-user weight cache must produce identical consensus values, and
+    call the underlying weight function once per member, not once per rating."""
+    from modules.clustering import consensus as consensus_mod
+    from modules.clustering.consensus import compute_cluster_scores
+
+    cuisine, rests = make_cuisine(session, 3)
+    # one cluster, 2 members who each rated all 3 restaurants (6 ratings, 2 members)
+    members, ratings = [], {}
+    for scores in ([8.0, 6.0, 9.0], [7.0, 5.0, 8.0]):
+        u = add_user(session)
+        members.append(u.id)
+        for r, sc in zip(rests, scores):
+            add_rating(session, u.id, r.id, sc)
+            ratings[(u.id, r.id)] = sc
+    cluster = add_cluster(session, cuisine.id, member_count=2)
+
+    calls = {"n": 0}
+    real = consensus_mod._rater_weight
+    def counting(sess, uid, cid):
+        calls["n"] += 1
+        return real(sess, uid, cid)
+    monkeypatch.setattr(consensus_mod, "_rater_weight", counting)
+
+    rows = compute_cluster_scores(
+        session, cuisine.id, {cluster.id: members}, ratings, NOW
+    )
+    assert rows == 3                       # 3 restaurants scored
+    assert calls["n"] == 2                 # one weight call per member, not per rating (would be 6)
+
+    stored = {
+        s.restaurant_id: s.consensus
+        for s in session.execute(select(ClusterRestaurantScore)).scalars()
+    }
+    # recompute the expected Bayesian-within-cluster value by hand for one restaurant
+    g = consensus_mod._global_average(session)
+    w = real(session, members[0], cuisine.id), real(session, members[1], cuisine.id)
+    expected_r0 = (consensus_mod.PRIOR_WEIGHT * g + 8.0 * w[0] + 7.0 * w[1]) / (
+        consensus_mod.PRIOR_WEIGHT + w[0] + w[1]
+    )
+    assert stored[rests[0].id] == pytest.approx(expected_r0)

@@ -41,6 +41,12 @@ CREATE TABLE rating_events (
     created_at    TEXT    NOT NULL
 );
 
+-- credibility reads filter by user_id; ranking/consensus read all ratings for a
+-- restaurant. Without these, both full-scan rating_events (see DECISIONS.md
+-- "phase 2b performance fix").
+CREATE INDEX ix_rating_events_user_id       ON rating_events(user_id);
+CREATE INDEX ix_rating_events_restaurant_id ON rating_events(restaurant_id);
+
 -- phase 2: per-(user, cuisine) Glicko-inspired state
 CREATE TABLE user_credibility (
     user_id           INTEGER NOT NULL REFERENCES users(id),

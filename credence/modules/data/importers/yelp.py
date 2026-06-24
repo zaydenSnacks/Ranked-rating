@@ -40,6 +40,19 @@ CATEGORY_MAP = {
     "Diners":                 "American",
 }
 
+# Venue types whose identity is not a restaurant even when they carry a
+# "Restaurants" tag plus a single mapped cuisine. A food hall, museum café, or
+# grocery with one Dim Sum stall otherwise imports as that cuisine and pollutes
+# its rating vectors — Reading Terminal Market alone was 10.8% of all Chinese
+# ratings, and the Philadelphia Museum of Art imported as American. See
+# DECISIONS.md "yelp importer scope" (known accepted noise) and "category
+# blocklist". Any business also tagged with one of these is skipped.
+NON_RESTAURANT_CATEGORIES = frozenset({
+    "Public Markets", "Food Court", "Museums", "Grocery", "Farmers Market",
+    "Convenience Stores", "Department Stores", "Wholesale Stores",
+    "Shopping Centers", "Stadiums & Arenas", "Gas Stations",
+})
+
 MIN_USER_REVIEWS_DEFAULT = 3  # mirrors MIN_RATINGS_FOR_VECTOR
 BATCH_SIZE = 5000
 
@@ -67,6 +80,8 @@ def _map_cuisine(categories: str | None) -> tuple[str | None, str]:
         return None, "unmapped_cuisine"
     if len(mapped) > 1:
         return None, "multi_cuisine"  # fusion handling is an open SPEC question
+    if any(c in NON_RESTAURANT_CATEGORIES for c in cats):
+        return None, "blocklisted_venue"  # food hall / museum café / grocery stall
     return mapped.pop(), "ok"
 
 
@@ -105,7 +120,8 @@ def import_yelp(
     stats = {
         "restaurants": 0, "users": 0, "events": 0,
         "skipped_not_restaurant": 0, "skipped_unmapped_cuisine": 0,
-        "skipped_multi_cuisine": 0, "skipped_city": 0, "skipped_sparse_user": 0,
+        "skipped_multi_cuisine": 0, "skipped_blocklisted_venue": 0,
+        "skipped_city": 0, "skipped_sparse_user": 0,
     }
 
     # pass over businesses: build yelp business_id → restaurant id

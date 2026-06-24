@@ -90,6 +90,26 @@ def test_skips_non_restaurants_unmapped_and_multi_cuisine(session, cuisines, tmp
     assert stats["skipped_multi_cuisine"] == 1
 
 
+def test_skips_blocklisted_non_restaurant_venues(session, cuisines, tmp_path):
+    # a food hall and a museum café each carry "Restaurants" + one mapped cuisine
+    # but are not restaurants — the blocklist keeps them out (Reading Terminal
+    # Market / Philadelphia Museum of Art). A plain restaurant still imports.
+    stats = run(
+        session, tmp_path,
+        [
+            business("b1", "Reading Terminal Market", "Restaurants, Dim Sum, Public Markets"),
+            business("b2", "Museum Cafe", "Restaurants, American (New), Museums"),
+            business("b3", "Dumpling House", "Restaurants, Chinese"),
+        ],
+        [],
+    )
+    assert stats["restaurants"] == 1  # only b3
+    assert stats["skipped_blocklisted_venue"] == 2
+    assert stats["skipped_multi_cuisine"] == 0  # blocklist, not the multi-cuisine path
+    names = {r.name for r in session.execute(select(Restaurant)).scalars()}
+    assert names == {"Dumpling House"}
+
+
 def test_same_cuisine_categories_do_not_count_as_multi(session, cuisines, tmp_path):
     stats = run(
         session, tmp_path,

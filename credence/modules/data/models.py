@@ -52,8 +52,8 @@ class RatingEvent(Base):
     __tablename__ = "rating_events"
 
     id:            Mapped[int]   = mapped_column(Integer, primary_key=True)
-    user_id:       Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"),       nullable=False)
-    restaurant_id: Mapped[int]   = mapped_column(Integer, ForeignKey("restaurants.id"), nullable=False)
+    user_id:       Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"),       nullable=False, index=True)
+    restaurant_id: Mapped[int]   = mapped_column(Integer, ForeignKey("restaurants.id"), nullable=False, index=True)
     score:         Mapped[float] = mapped_column(Float,   nullable=False)
     created_at:    Mapped[str]   = mapped_column(String,  nullable=False)
 

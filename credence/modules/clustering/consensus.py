@@ -50,6 +50,16 @@ def compute_cluster_scores(
     global_avg = _global_average(session)
     count = 0
 
+    # A member's weight depends only on (user_id, cuisine_id), which is constant
+    # for this call — but a member appears once per restaurant they rated. Cache
+    # per user so each weight is computed once instead of once per rating.
+    weight_cache: dict[int, float] = {}
+
+    def weight(user_id: int) -> float:
+        if user_id not in weight_cache:
+            weight_cache[user_id] = _rater_weight(session, user_id, cuisine_id)
+        return weight_cache[user_id]
+
     for cluster_id, member_ids in members_by_cluster.items():
         members = set(member_ids)
         by_restaurant: dict[int, list[tuple[int, float]]] = {}
@@ -58,7 +68,7 @@ def compute_cluster_scores(
                 by_restaurant.setdefault(restaurant_id, []).append((user_id, score))
 
         for restaurant_id, raters in by_restaurant.items():
-            weights = [_rater_weight(session, uid, cuisine_id) for uid, _ in raters]
+            weights = [weight(uid) for uid, _ in raters]
             numerator = PRIOR_WEIGHT * global_avg + sum(
                 score * w for (_, score), w in zip(raters, weights)
             )
